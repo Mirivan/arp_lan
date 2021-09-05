@@ -4,6 +4,7 @@ import datetime
 import logging
 import psutil
 import socket
+import shlex
 import subprocess
 import sys
 import time
@@ -16,7 +17,7 @@ list_of_ips = []
 
 def main():
 
-    print("Hello there...\n")
+    print("Hello there, select attack method:\n")
 
     if os.geteuid() != 0:
         print("This script need root privilege")
@@ -25,8 +26,8 @@ def main():
     attackMode = menu()
 
     try:
-        interfaces = psutil.net_if_addrs()
         print("")
+        interfaces = psutil.net_if_addrs()
         for i in interfaces.keys():
             print(i + " :: " + interfaces[i][0][1])
         print("")
@@ -43,7 +44,7 @@ def main():
     netmask= interfaces[iface][0][2]
     rangeOfIp = str(interfaces[iface][0][1]) + "/" + str(sum([bin(int(x)).count('1') for x in netmask.split('.')]))
     scan(iface, rangeOfIp)
-    attack(attackMode)
+    attack(attackMode, iface)
 
 def menu():
     print("1) Kick one device\n")
@@ -87,7 +88,7 @@ def scan(iface, ips):
             except:
                 vendor = "Unknown"
             print(r.sprintf(r"%Ether.src% - %ARP.psrc%" + "   " + vendor))
-            gateway = get_gateway()
+            gateway = get_gateway(iface)
             if not r.sprintf(r"%ARP.psrc%") == gateway:
                 list_of_ips.append(r.sprintf(r"%ARP.psrc%"))
     except Exception as Err:
@@ -98,27 +99,21 @@ def scan(iface, ips):
     time_scan = stop_scan - start_scan
     print("[*] Scan duration :: " + str(time_scan))
 
-def get_gateway():
-    # A hacky method to get the current lan ip address. It requires internet
-    # access, but it works
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    s.connect(("google.com", 80))
-    ip = s.getsockname()
-    s.close()
-    ip_list = ip[0].split('.')
-    del ip_list[-1]
-    ip_list.append('*')
-    ip_range = '.'.join(ip_list)
-    del ip_list[-1]
-    ip_list.append('1')
-    gateway_ip = '.'.join(ip_list)
-    return gateway_ip
+def get_gateway(wlan: str = None):
+    if wlan:
+        s = subprocess.check_output(
+            "sudo cat /proc/net/arp | grep " + wlan,
+            shell=True
+        )
+        return s.decode().split(" ", 1)[0]
+    print("[-] Failed to get gateway IP. Need /proc/net/arp access.")
+    sys.exit(1)
 
-def attack(attackMode):
+def attack(attackMode, iface):
     target = []
     global list_of_ips
 
-    gateway = get_gateway()
+    gateway = get_gateway(iface)
     print("[+] Gateway ip: " + gateway)
 
     if attackMode == 1:
